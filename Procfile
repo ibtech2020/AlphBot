@@ -1,1 +1,1 @@
-worker: python sma_strategy.py
+worker: python run.py
