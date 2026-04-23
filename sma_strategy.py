@@ -15,7 +15,6 @@ import datetime
 import pandas as pd
 import ccxt
 from config import get_exchange
-from webhook_server import start_webhook_server
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -195,9 +194,6 @@ def update_break_even(position, current_price):
             position['sl'] = position['entry']
             return True
     return False
-
-# ========== START WEBHOOK SERVER ==========
-start_webhook_server()
 
 # ========== MAIN LOOP ==========
 positions = {}

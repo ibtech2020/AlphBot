@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
 Webhook server for the trading bot.
-Runs on port 8000 via gunicorn (subprocess), accepting POST requests at /webhook.
+Runs on port 8000 via gunicorn, accepting POST requests at /webhook.
 Validates the WEBHOOK_SECRET header before processing any payload.
 """
 
 import os
 import json
 import logging
-import subprocess
-import sys
 from flask import Flask, request, jsonify
 
 logger = logging.getLogger(__name__)
@@ -43,18 +41,3 @@ def webhook():
 
     return jsonify({"status": "ok", "message": "Webhook received"}), 200
 
-
-def start_webhook_server():
-    """Start the Flask webhook server via gunicorn in a background subprocess on port 8000."""
-    process = subprocess.Popen(
-        [
-            sys.executable, "-m", "gunicorn",
-            "--workers", "1",
-            "--bind", "0.0.0.0:8000",
-            "webhook_server:app",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    print("🌐 Webhook server started on port 8000 (POST /webhook)")
-    return process
