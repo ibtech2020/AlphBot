@@ -84,7 +84,7 @@ def fetch_ohlcv_cached(symbol, timeframe='5m', limit=100):
     for attempt in range(MAX_RETRIES):
         try:
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-            if ohlcv and len(ohlcv) >= 20:
+            if ohlcv and len(ohlcv) >= 2:
                 cached_ohlcv[symbol] = ohlcv
                 last_fetch_time[symbol] = now
                 return ohlcv
