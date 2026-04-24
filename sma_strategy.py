@@ -196,128 +196,117 @@ def update_break_even(position, current_price):
     return False
 
 # ========== MAIN LOOP ==========
-positions = {}
-iteration = 0
-signal_counts = {symbol: 0 for symbol in TRADING_PAIRS}
-last_valid_dfs = {}
+def main():
+    positions = {}
+    iteration = 0
+    signal_counts = {symbol: 0 for symbol in TRADING_PAIRS}
+    last_valid_dfs = {}
 
-while True:
-    try:
-        iteration += 1
-        print(f"\n{'='*60}")
-        print(f"🔄 Cycle {iteration} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*60}")
-        
-        for symbol in TRADING_PAIRS:
-            try:
-                # Fetch current price
-                ticker = exchange.fetch_ticker(symbol)
-                current_price = ticker['last']
-                
-                # Fetch OHLCV with caching
-                ohlcv = fetch_ohlcv_cached(symbol, timeframe='5m', limit=100)
-                if ohlcv is None:
-                    if symbol in last_valid_dfs:
-                        df = last_valid_dfs[symbol]
-                        print(f"⚠️ {symbol}: Using cached data")
-                    else:
-                        print(f"⚠️ {symbol}: No data, skipping")
-                        continue
-                else:
-                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    df['ema_fast'] = calculate_ema(df, FAST_EMA_LEN)
-                    df['ema_slow'] = calculate_ema(df, SLOW_EMA_LEN)
-                    atr = calculate_atr(df, ATR_LEN)
-                    last_valid_dfs[symbol] = df.copy()
-                
-                # Get buy signal (only long)
-                buy_signal = get_buy_signal(df, current_price, TESTING_MODE, TESTING_SPEED)
-                
-                # Check existing position
-                position = positions.get(symbol)
-                
-                # --- ENTRY (LONG ONLY) ---
-                if not position and buy_signal:
-                    signal_counts[symbol] += 1
-                    amount = POSITION_SIZE_USD / current_price
-                    sl, tp = calculate_trade_levels(current_price, atr)
+    while True:
+        try:
+            iteration += 1
+            print(f"\n{'='*60}")
+            print(f"🔄 Cycle {iteration} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"{'='*60}")
+            
+            for symbol in TRADING_PAIRS:
+                try:
+                    ticker = exchange.fetch_ticker(symbol)
+                    current_price = ticker['last']
                     
-                    if amount > 0 and sl < current_price < tp:
-                        print(f"\n📈 {symbol} LONG SIGNAL #{signal_counts[symbol]} at ${current_price:.4f}")
-                        print(f"   Time: {datetime.datetime.now().strftime('%H:%M:%S')}")
-                        print(f"   Entry: ${current_price:.4f}")
-                        print(f"   Stop Loss: ${sl:.4f} (Loss: ${(current_price - sl) * amount:.2f})")
-                        print(f"   Take Profit: ${tp:.4f} (Profit: ${(tp - current_price) * amount:.2f})")
+                    ohlcv = fetch_ohlcv_cached(symbol, timeframe='5m', limit=100)
+                    if ohlcv is None:
+                        if symbol in last_valid_dfs:
+                            df = last_valid_dfs[symbol]
+                            print(f"⚠️ {symbol}: Using cached data")
+                        else:
+                            print(f"⚠️ {symbol}: No data, skipping")
+                            continue
+                    else:
+                        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        df['ema_fast'] = calculate_ema(df, FAST_EMA_LEN)
+                        df['ema_slow'] = calculate_ema(df, SLOW_EMA_LEN)
+                        atr = calculate_atr(df, ATR_LEN)
+                        last_valid_dfs[symbol] = df.copy()
+                    
+                    buy_signal = get_buy_signal(df, current_price, TESTING_MODE, TESTING_SPEED)
+                    position = positions.get(symbol)
+                    
+                    if not position and buy_signal:
+                        signal_counts[symbol] += 1
+                        amount = POSITION_SIZE_USD / current_price
+                        sl, tp = calculate_trade_levels(current_price, atr)
                         
-                        order_id = place_market_order(symbol, 'buy', amount)
-                        if order_id:
-                            positions[symbol] = {
-                                'side': 'long',
-                                'entry': current_price,
-                                'sl': sl,
-                                'tp': tp,
-                                'amount': amount
-                            }
-                            print(f"   ✅ Position opened (order {order_id})")
+                        if amount > 0 and sl < current_price < tp:
+                            print(f"\n📈 {symbol} LONG SIGNAL #{signal_counts[symbol]} at ${current_price:.4f}")
+                            print(f"   Time: {datetime.datetime.now().strftime('%H:%M:%S')}")
+                            print(f"   Entry: ${current_price:.4f}")
+                            print(f"   Stop Loss: ${sl:.4f} (Loss: ${(current_price - sl) * amount:.2f})")
+                            print(f"   Take Profit: ${tp:.4f} (Profit: ${(tp - current_price) * amount:.2f})")
+                            
+                            order_id = place_market_order(symbol, 'buy', amount)
+                            if order_id:
+                                positions[symbol] = {
+                                    'side': 'long',
+                                    'entry': current_price,
+                                    'sl': sl,
+                                    'tp': tp,
+                                    'amount': amount
+                                }
+                                print(f"   ✅ Position opened (order {order_id})")
+                            else:
+                                print("   ⚠️ Entry failed")
                         else:
-                            print("   ⚠️ Entry failed")
-                    else:
-                        print(f"   ⚠️ {symbol} Invalid SL/TP levels")
-                
-                # --- EXIT MONITORING ---
-                if symbol in positions:
-                    position = positions[symbol]
-                    exit_triggered = False
+                            print(f"   ⚠️ {symbol} Invalid SL/TP levels")
                     
-                    # Update trailing stop and break-even
-                    if update_trailing_stop(position, current_price):
-                        print(f"   📈 {symbol} Trailing stop raised to ${position['sl']:.4f}")
-                    if update_break_even(position, current_price):
-                        print(f"   🔒 {symbol} Stop moved to break-even at ${position['entry']:.4f}")
+                    if symbol in positions:
+                        position = positions[symbol]
+                        exit_triggered = False
+                        
+                        if update_trailing_stop(position, current_price):
+                            print(f"   📈 {symbol} Trailing stop raised to ${position['sl']:.4f}")
+                        if update_break_even(position, current_price):
+                            print(f"   🔒 {symbol} Stop moved to break-even at ${position['entry']:.4f}")
+                        
+                        if current_price <= position['sl']:
+                            print(f"\n❌ {symbol} STOP LOSS TRIGGERED at ${current_price:.4f}")
+                            exit_triggered = True
+                        elif current_price >= position['tp']:
+                            print(f"\n✅ {symbol} TAKE PROFIT TRIGGERED at ${current_price:.4f}")
+                            exit_triggered = True
+                        
+                        if exit_triggered:
+                            close_order_id = place_market_order(symbol, 'sell', position['amount'])
+                            if close_order_id:
+                                print(f"   ✅ {symbol} Position closed (order {close_order_id})")
+                            else:
+                                print(f"   ⚠️ {symbol} Failed to close position")
+                            del positions[symbol]
                     
-                    # Check stop loss and take profit
-                    if current_price <= position['sl']:
-                        print(f"\n❌ {symbol} STOP LOSS TRIGGERED at ${current_price:.4f}")
-                        exit_triggered = True
-                    elif current_price >= position['tp']:
-                        print(f"\n✅ {symbol} TAKE PROFIT TRIGGERED at ${current_price:.4f}")
-                        exit_triggered = True
-                    
-                    if exit_triggered:
-                        close_order_id = place_market_order(symbol, 'sell', position['amount'])
-                        if close_order_id:
-                            print(f"   ✅ {symbol} Position closed (order {close_order_id})")
-                        else:
-                            print(f"   ⚠️ {symbol} Failed to close position")
-                        del positions[symbol]
-                
-                # --- STATUS UPDATE ---
-                status = "🔴 IN POSITION" if symbol in positions else "🟢 WAITING"
-                if TESTING_MODE and 'df' in locals() and df is not None:
+                    status = "🔴 IN POSITION" if symbol in positions else "🟢 WAITING"
                     ema_fast_val = df['ema_fast'].iloc[-1] if not pd.isna(df['ema_fast'].iloc[-1]) else 0
                     ema_slow_val = df['ema_slow'].iloc[-1] if not pd.isna(df['ema_slow'].iloc[-1]) else 0
                     atr_val = atr if not pd.isna(atr) else 0
                     print(f"[{time.strftime('%H:%M:%S')}] {symbol}: ${current_price:.4f} | EMA9: ${ema_fast_val:.0f} | EMA21: ${ema_slow_val:.0f} | ATR: ${atr_val:.2f} | {status} | Signals: {signal_counts[symbol]}")
-                else:
-                    print(f"[{time.strftime('%H:%M:%S')}] {symbol}: ${current_price:.4f} | {status}")
-                
-                # Small delay between symbols
-                time.sleep(0.5)
-                
-            except Exception as e:
-                print(f"⚠️ Error processing {symbol}: {e}")
-                continue
-        
-        # Sleep between full cycles
-        if TESTING_MODE and TESTING_SPEED == "INSTANT":
-            time.sleep(5)
-        else:
-            time.sleep(60)
-        
-    except KeyboardInterrupt:
-        print(f"\n🛑 Bot stopped")
-        print(f"Final signal counts: {signal_counts}")
-        break
-    except Exception as e:
-        print(f"⚠️ Main loop error: {e}")
-        time.sleep(30)
+                    
+                    time.sleep(0.5)
+                    
+                except Exception as e:
+                    print(f"⚠️ Error processing {symbol}: {e}")
+                    continue
+            
+            if TESTING_MODE and TESTING_SPEED == "INSTANT":
+                time.sleep(5)
+            else:
+                time.sleep(60)
+            
+        except KeyboardInterrupt:
+            print(f"\n🛑 Bot stopped")
+            print(f"Final signal counts: {signal_counts}")
+            break
+        except Exception as e:
+            print(f"⚠️ Main loop error: {e}")
+            time.sleep(30)
+
+if __name__ == "__main__":
+    main()
