@@ -8,15 +8,50 @@ Multi-Crypto Trading Bot for Alpaca Paper Trading (LONG ONLY)
 """
 
 import os
+import sys
 import time
 import warnings
 import random
 import datetime
 import pandas as pd
 import ccxt
+from zoneinfo import ZoneInfo
 from config import get_exchange
 
 warnings.filterwarnings("ignore", category=UserWarning)
+
+# ========== BUSINESS HOURS GUARD ==========
+def check_business_hours():
+    """
+    Exit gracefully if the current time is outside business hours.
+    Business hours: Monday–Friday, 06:00–16:00 EST (America/New_York).
+    """
+    est = ZoneInfo("America/New_York")
+    now = datetime.datetime.now(tz=est)
+    weekday = now.weekday()  # 0 = Monday, 6 = Sunday
+    hour = now.hour
+    minute = now.minute
+
+    # Weekend check
+    if weekday >= 5:
+        day_name = now.strftime("%A")
+        print(f"🕐 Outside business hours: today is {day_name}. "
+              f"Worker only runs Monday–Friday 06:00–16:00 EST. Exiting.")
+        sys.exit(0)
+
+    # Before 6AM EST
+    if hour < 6:
+        print(f"🕐 Outside business hours: current time is {now.strftime('%H:%M')} EST "
+              f"(before 06:00). Worker only runs 06:00–16:00 EST. Exiting.")
+        sys.exit(0)
+
+    # At or after 4PM EST
+    if hour >= 16:
+        print(f"🕐 Outside business hours: current time is {now.strftime('%H:%M')} EST "
+              f"(past 16:00). Worker only runs 06:00–16:00 EST. Exiting.")
+        sys.exit(0)
+
+    print(f"✅ Business hours check passed: {now.strftime('%A %Y-%m-%d %H:%M')} EST — proceeding.")
 
 # ========== MULTI-CRYPTO CONFIGURATION ==========
 TRADING_PAIRS = [
@@ -197,6 +232,8 @@ def update_break_even(position, current_price):
 
 # ========== MAIN LOOP ==========
 def main():
+    check_business_hours()
+
     positions = {}
     iteration = 0
     signal_counts = {symbol: 0 for symbol in TRADING_PAIRS}
